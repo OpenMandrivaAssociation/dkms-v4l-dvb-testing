@@ -3,7 +3,7 @@
 %define dkmsname v4l-dvb-testing
 %define oname	v4l-dvb
 %define version 0
-%define snapshot 7826
+%define snapshot 7901
 %define rel	1
 
 # Set the minimum kernel version that should be supported.
