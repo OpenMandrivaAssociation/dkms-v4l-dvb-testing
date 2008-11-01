@@ -3,13 +3,16 @@
 %define dkmsname v4l-dvb-testing
 %define oname	v4l-dvb
 %define version 0
-%define snapshot 7901
+%define snapshot 9500
 %define rel	1
 
 # Set the minimum kernel version that should be supported.
 # Setting a lower version automatically drops modules that depend
 # on a newer kernel.
+%define minkernel 2.6.27
+%if %{mdkversion} <= 200810
 %define minkernel 2.6.24
+%endif
 # Set the minimum kernel package that should be supported.
 # The package may fail to build against a kernel that has disabled
 # features compared to this reference kernel.
@@ -51,7 +54,9 @@ install -d -m755 %{buildroot}%{_usrsrc}/%{dkmsname}-%{version}-%{release}
 cp -a v4l linux %{buildroot}%{_usrsrc}/%{dkmsname}-%{version}-%{release}
 rm -f %{buildroot}%{_usrsrc}/%{dkmsname}-%{version}-%{release}/v4l/scripts/*
 install -m755 v4l/scripts/make_config_compat.pl %{buildroot}%{_usrsrc}/%{dkmsname}-%{version}-%{release}/v4l/scripts/
-echo "#!/bin/true" > %{buildroot}%{_usrsrc}/%{dkmsname}-%{version}-%{release}/v4l/scripts/rmmod.pl
+for script in rmmod.pl make_makefile.pl make_myconfig.pl; do
+	echo "#!/bin/true" > %{buildroot}%{_usrsrc}/%{dkmsname}-%{version}-%{release}/v4l/scripts/$script
+done
 chmod 0755 %{buildroot}%{_usrsrc}/%{dkmsname}-%{version}-%{release}/v4l/scripts/rmmod.pl
 
 cd v4l
@@ -65,7 +70,6 @@ cat Makefile.media Makefile.sound | while read input; do
 done
 cd -
 
-# (Anssi 05/2008) touch is there to avoid makefile trying to refresh it
 cat > %{buildroot}%{_usrsrc}/%{dkmsname}-%{version}-%{release}/dkms.conf <<EOF
 PACKAGE_NAME="%{dkmsname}"
 PACKAGE_VERSION="%{version}-%{release}"
