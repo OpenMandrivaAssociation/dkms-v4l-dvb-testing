@@ -3,7 +3,7 @@
 %define dkmsname v4l-dvb-testing
 %define oname	v4l-dvb
 %define version 0
-%define snapshot 9500
+%define snapshot 9767
 %define rel	1
 
 # Set the minimum kernel version that should be supported.
@@ -54,7 +54,7 @@ install -d -m755 %{buildroot}%{_usrsrc}/%{dkmsname}-%{version}-%{release}
 cp -a v4l linux %{buildroot}%{_usrsrc}/%{dkmsname}-%{version}-%{release}
 rm -f %{buildroot}%{_usrsrc}/%{dkmsname}-%{version}-%{release}/v4l/scripts/*
 install -m755 v4l/scripts/make_config_compat.pl %{buildroot}%{_usrsrc}/%{dkmsname}-%{version}-%{release}/v4l/scripts/
-for script in rmmod.pl make_makefile.pl make_myconfig.pl; do
+for script in rmmod.pl make_makefile.pl make_myconfig.pl make_kconfig.pl; do
 	echo "#!/bin/true" > %{buildroot}%{_usrsrc}/%{dkmsname}-%{version}-%{release}/v4l/scripts/$script
 	chmod 0755 %{buildroot}%{_usrsrc}/%{dkmsname}-%{version}-%{release}/v4l/scripts/$script
 done
