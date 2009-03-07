@@ -4,7 +4,7 @@
 %define oname	v4l-dvb
 %define version 0
 %define snapshot 10785
-%define rel	1
+%define rel	2
 
 # Set the minimum kernel version that should be supported.
 # Setting a lower version automatically drops modules that depend
@@ -34,7 +34,8 @@ URL:		http://linuxtv.org/
 # cd v4l-dvb; hg archive -ttbz2 ../v4l-dvb-$(hg tip --template {rev}).tar.bz2; cd ..
 Source:		%oname-%snapshot.tar.bz2
 BuildRoot:	%{_tmppath}/%{name}-root
-BuildArch:	noarch
+# 64bit has v4l2-compat-ioctl32.ko, 32bit does not, thus not noarch
+#BuildArch:	noarch
 Requires:	dkms
 Requires(post):	dkms
 Requires(preun): dkms
