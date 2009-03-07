@@ -3,8 +3,8 @@
 %define dkmsname v4l-dvb-testing
 %define oname	v4l-dvb
 %define version 0
-%define snapshot 10785
-%define rel	2
+%define snapshot 10837
+%define rel	1
 
 # Set the minimum kernel version that should be supported.
 # Setting a lower version automatically drops modules that depend
