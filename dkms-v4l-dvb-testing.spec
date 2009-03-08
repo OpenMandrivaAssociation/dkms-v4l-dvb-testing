@@ -4,7 +4,7 @@
 %define oname	v4l-dvb
 %define version 0
 %define snapshot 10837
-%define rel	1
+%define rel	2
 
 # Set the minimum kernel version that should be supported.
 # Setting a lower version automatically drops modules that depend
@@ -84,6 +84,10 @@ EOF
 
 i=0
 for module in $(cat v4l/modulelist | xargs -n1 | sort -u); do
+	if [ "$module" = "v4l2-compat-ioctl32" ]; then
+		# hacked here to avoid more Makefile.* parsing logic above
+		grep "^CONFIG_COMPAT=y" $(rpm -ql $(rpm -q --requires %kernelpkg | grep ^kernel-) | grep '\.config') || continue
+	fi
 	cat >> %{buildroot}%{_usrsrc}/%{dkmsname}-%{version}-%{release}/dkms.conf <<-EOF
 	BUILT_MODULE_NAME[$i]="$module"
 	BUILT_MODULE_LOCATION[$i]="v4l"
