@@ -4,7 +4,7 @@
 %define oname	v4l-dvb
 %define version 0
 %define snapshot 10837
-%define rel	2
+%define rel	3
 
 # Set the minimum kernel version that should be supported.
 # Setting a lower version automatically drops modules that depend
@@ -33,6 +33,10 @@ URL:		http://linuxtv.org/
 # rm -rf v4l-dvb; hg clone http://linuxtv.org/hg/v4l-dvb
 # cd v4l-dvb; hg archive -ttbz2 ../v4l-dvb-$(hg tip --template {rev}).tar.bz2; cd ..
 Source:		%oname-%snapshot.tar.bz2
+# Bug in dependency resolver on v4l/scripts/make_kconfig.pl causes modules
+# (e.g. dvb-usb-af9015) to be disabled, workaround by enabling DVB_FE_CUSTOMISE:
+# FIXME: this doesn't solve everything, some are still disabled
+Patch0:		v4l-dvb-enable-dvb-fe-customise.patch
 BuildRoot:	%{_tmppath}/%{name}-root
 # 64bit has v4l2-compat-ioctl32.ko, 32bit does not, thus not noarch
 #BuildArch:	noarch
@@ -49,6 +53,7 @@ subsystem of the Linux kernel.
 
 %prep
 %setup -q -n %oname-%snapshot
+%patch0 -p1
 cd v4l
 %make allyesconfig Makefile.media Makefile.sound .myconfig VER=%minkernel SRCDIR=$(rpm -ql $(rpm -q --requires %kernelpkg | grep ^kernel-) | grep '\.config' | sed 's,/.config,,')
 
