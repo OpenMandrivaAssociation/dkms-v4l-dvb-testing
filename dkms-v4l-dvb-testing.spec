@@ -3,13 +3,16 @@
 %define dkmsname v4l-dvb-testing
 %define oname	v4l-dvb
 %define version 0
-%define snapshot 10837
-%define rel	4
+%define snapshot 12407
+%define rel	1
 
 # Set the minimum kernel version that should be supported.
 # Setting a lower version automatically drops modules that depend
 # on a newer kernel.
+%define minkernel 2.6.31
+%if %{mdkversion} <= 200910
 %define minkernel 2.6.29
+%endif
 %if %{mdkversion} <= 200900
 %define minkernel 2.6.27
 %endif
@@ -33,10 +36,6 @@ URL:		http://linuxtv.org/
 # rm -rf v4l-dvb; hg clone http://linuxtv.org/hg/v4l-dvb
 # cd v4l-dvb; hg archive -ttbz2 ../v4l-dvb-$(hg tip --template {rev}).tar.bz2; cd ..
 Source:		%oname-%snapshot.tar.bz2
-# Bug in dependency resolver on v4l/scripts/make_kconfig.pl causes modules
-# (e.g. dvb-usb-af9015) to be disabled, workaround by disabling if/endif block
-# handling.
-Patch0:		v4l-dvb-workaround-if-endif-bug.patch
 # Disable DVB_DUMMY_FE
 Patch1:		v4l-dvb-disable-dvb-dummy-fe.patch
 BuildRoot:	%{_tmppath}/%{name}-root
@@ -55,10 +54,16 @@ subsystem of the Linux kernel.
 
 %prep
 %setup -q -n %oname-%snapshot
-%patch0 -p1
 %patch1 -p1
+
+%build
 cd v4l
 %make allyesconfig Makefile.media Makefile.sound .myconfig VER=%minkernel SRCDIR=$(rpm -ql $(rpm -q --requires %kernelpkg | grep ^kernel-) | grep '\.config' | sed 's,/.config,,')
+
+%if %{mdkversion} <= 200910
+# no necessary headers in kernel-devel
+echo 'CONFIG_DVB_FIREDTV_IEEE1394 := n' >> .myconfig
+%endif
 
 %install
 rm -rf %{buildroot}
@@ -86,7 +91,7 @@ cat > %{buildroot}%{_usrsrc}/%{dkmsname}-%{version}-%{release}/dkms.conf <<EOF
 PACKAGE_NAME="%{dkmsname}"
 PACKAGE_VERSION="%{version}-%{release}"
 MAKE[0]="make -Cv4l all SRCDIR=\$kernel_source_dir"
-CLEAN="make -Cv4l clean"
+CLEAN="make -Cv4l clean || :"
 AUTOINSTALL=yes
 EOF
 
