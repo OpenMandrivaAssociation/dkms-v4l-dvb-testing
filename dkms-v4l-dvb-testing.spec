@@ -3,13 +3,16 @@
 %define dkmsname v4l-dvb-testing
 %define oname	v4l-dvb
 %define version 0
-%define snapshot 12407
+%define snapshot 14014
 %define rel	1
 
 # Set the minimum kernel version that should be supported.
 # Setting a lower version automatically drops modules that depend
 # on a newer kernel.
+%define minkernel 2.6.32
+%if %{mdkversion} <= 201000
 %define minkernel 2.6.31
+%endif
 %if %{mdkversion} <= 200910
 %define minkernel 2.6.29
 %endif
@@ -36,6 +39,8 @@ URL:		http://linuxtv.org/
 # rm -rf v4l-dvb; hg clone http://linuxtv.org/hg/v4l-dvb
 # cd v4l-dvb; hg archive -ttbz2 ../v4l-dvb-$(hg tip --template {rev}).tar.bz2; cd ..
 Source:		%oname-%snapshot.tar.bz2
+# fixes build on mnb patched 2.6.31 kernels
+Source1:	v4l-dvb-2.6.31mnb.patch
 # Disable DVB_DUMMY_FE
 Patch1:		v4l-dvb-disable-dvb-dummy-fe.patch
 BuildRoot:	%{_tmppath}/%{name}-root
@@ -87,10 +92,15 @@ cat Makefile.media Makefile.sound | while read input; do
 done
 cd -
 
+mkdir -p %{buildroot}%{_usrsrc}/%{dkmsname}-%{version}-%{release}/patches
+install -m644 %{SOURCE1} %{buildroot}%{_usrsrc}/%{dkmsname}-%{version}-%{release}/patches/
+
 cat > %{buildroot}%{_usrsrc}/%{dkmsname}-%{version}-%{release}/dkms.conf <<EOF
 PACKAGE_NAME="%{dkmsname}"
 PACKAGE_VERSION="%{version}-%{release}"
-MAKE[0]="make -Cv4l all SRCDIR=\$kernel_source_dir"
+PATCH[0]="v4l-dvb-2.6.31mnb.patch"
+PATCH_MATCH[0]="2\.6\.31\.[1-9].*mnb"
+MAKE[0]="make -j \\\$(/usr/bin/getconf _NPROCESSORS_ONLN) -Cv4l all SRCDIR=\$kernel_source_dir"
 CLEAN="make -Cv4l clean || :"
 AUTOINSTALL=yes
 EOF
