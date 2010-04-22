@@ -44,6 +44,7 @@ Source1:	v4l-dvb-2.6.31mnb.patch
 # Disable DVB_DUMMY_FE
 Patch1:		v4l-dvb-disable-dvb-dummy-fe.patch
 BuildRoot:	%{_tmppath}/%{name}-root
+Patch2:		v4l-dvb-add-sq930x-support.patch
 # 64bit has v4l2-compat-ioctl32.ko, 32bit does not, thus not noarch
 #BuildArch:	noarch
 Requires:	dkms
@@ -60,6 +61,7 @@ subsystem of the Linux kernel.
 %prep
 %setup -q -n %oname-%snapshot
 %patch1 -p1
+%patch2 -p1 -b .sq930x~
 
 %build
 cd v4l
