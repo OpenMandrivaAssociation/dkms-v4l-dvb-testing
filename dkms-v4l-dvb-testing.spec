@@ -4,7 +4,7 @@
 %define oname	v4l-dvb
 %define version 0
 %define snapshot 14014
-%define rel	1
+%define rel	2
 
 # Set the minimum kernel version that should be supported.
 # Setting a lower version automatically drops modules that depend
