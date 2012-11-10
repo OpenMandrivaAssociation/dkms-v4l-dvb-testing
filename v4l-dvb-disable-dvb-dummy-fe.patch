@@ -1,0 +1,11 @@
+diff -p -up v4l-dvb-14014/v4l/scripts/make_kconfig.pl.orig v4l-dvb-14014/v4l/scripts/make_kconfig.pl
+--- v4l-dvb-14014/v4l/scripts/make_kconfig.pl.orig	2010-01-20 10:54:00.000000000 +0200
++++ v4l-dvb-14014/v4l/scripts/make_kconfig.pl	2010-01-23 03:04:58.482533813 +0200
+@@ -591,6 +591,7 @@ close OUT;
+ # These options should default to off
+ disable_config('DVB_AV7110_FIRMWARE');
+ disable_config('DVB_CINERGYT2_TUNING');
++disable_config('DVB_DUMMY_FE');
+ disable_config('VIDEO_HELPER_CHIPS_AUTO');
+ disable_config('VIDEO_FIXED_MINOR_RANGES');
+ disable_config('STAGING');

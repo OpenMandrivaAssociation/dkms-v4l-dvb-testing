@@ -1,0 +1,1168 @@
+diff --git a/linux/Documentation/video4linux/gspca.txt b/linux/Documentation/video4linux/gspca.txt
+index 9de9db0..803e625 100644
+--- a/linux/Documentation/video4linux/gspca.txt
++++ b/linux/Documentation/video4linux/gspca.txt
+@@ -29,8 +29,12 @@ zc3xx		041e:4029	Creative WebCam Vista Pro
+ zc3xx		041e:4034	Creative Instant P0620
+ zc3xx		041e:4035	Creative Instant P0620D
+ zc3xx		041e:4036	Creative Live !
++sq930x		041e:4038	Creative Live! Pro
+ zc3xx		041e:403a	Creative Nx Pro 2
+ spca561		041e:403b	Creative Webcam Vista (VF0010)
++sq930x		041e:403d	Creative Ultra for Notebooks
++sq930x		041e:403c	Creative Ultra for Notebooks
++sq930x		041e:4041	Creative Live! Motion
+ zc3xx		041e:4051	Creative Live!Cam Notebook Pro (VF0250)
+ ov519		041e:4052	Creative Live! VISTA IM
+ zc3xx		041e:4053	Creative Live!Cam Video IM
+@@ -354,6 +358,8 @@ sq905c		2770:9052	Disney pix micro 2 (VGA)
+ sq905c		2770:905c	All 11 known cameras with this ID
+ sq905		2770:9120	All 24 known cameras with this ID
+ sq905c		2770:913d	All 4 known cameras with this ID
++sq930x		2770:930b	Sweex Motion Tracking, Typhoon Motion Cam
++sq930x		2770:930c	Trust WB-3500T
+ spca500		2899:012c	Toptro Industrial
+ ov519		8020:ef04	ov519
+ spca508		8086:0110	Intel Easy PC Camera
+diff --git a/linux/drivers/media/video/gspca/Kconfig b/linux/drivers/media/video/gspca/Kconfig
+index e0060c1..3383a30 100644
+--- a/linux/drivers/media/video/gspca/Kconfig
++++ b/linux/drivers/media/video/gspca/Kconfig
+@@ -270,6 +270,15 @@ config USB_GSPCA_SQ905C
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called gspca_sq905c.
+ 
++config USB_GSPCA_SQ930X
++	tristate "SQ Technologies SQ930X based USB Camera Driver"
++	depends on VIDEO_V4L2 && USB_GSPCA
++	help
++	  Say Y here if you want support for cameras based on the SQ930X chip.
++
++	  To compile this driver as a module, choose M here: the
++	  module will be called gspca_sq930x.
++
+ config USB_GSPCA_STK014
+ 	tristate "Syntek DV4000 (STK014) USB Camera Driver"
+ 	depends on VIDEO_V4L2 && USB_GSPCA
+diff --git a/linux/drivers/media/video/gspca/Makefile b/linux/drivers/media/video/gspca/Makefile
+index 6e4cf1c..0900c0e 100644
+--- a/linux/drivers/media/video/gspca/Makefile
++++ b/linux/drivers/media/video/gspca/Makefile
+@@ -25,6 +25,7 @@ obj-$(CONFIG_USB_GSPCA_SPCA508)  += gspca_spca508.o
+ obj-$(CONFIG_USB_GSPCA_SPCA561)  += gspca_spca561.o
+ obj-$(CONFIG_USB_GSPCA_SQ905)    += gspca_sq905.o
+ obj-$(CONFIG_USB_GSPCA_SQ905C)   += gspca_sq905c.o
++obj-$(CONFIG_USB_GSPCA_SQ930X)   += gspca_sq930x.o
+ obj-$(CONFIG_USB_GSPCA_SUNPLUS)  += gspca_sunplus.o
+ obj-$(CONFIG_USB_GSPCA_STK014)   += gspca_stk014.o
+ obj-$(CONFIG_USB_GSPCA_STV0680)  += gspca_stv0680.o
+@@ -60,6 +61,7 @@ gspca_spca508-objs  := spca508.o
+ gspca_spca561-objs  := spca561.o
+ gspca_sq905-objs    := sq905.o
+ gspca_sq905c-objs   := sq905c.o
++gspca_sq930x-objs   := sq930x.o
+ gspca_stk014-objs   := stk014.o
+ gspca_stv0680-objs  := stv0680.o
+ gspca_sunplus-objs  := sunplus.o
+diff --git a/linux/drivers/media/video/gspca/sq930x.c b/linux/drivers/media/video/gspca/sq930x.c
+new file mode 100644
+index 0000000..31de1e2
+--- /dev/null
++++ b/linux/drivers/media/video/gspca/sq930x.c
+@@ -0,0 +1,1096 @@
++/*
++ * SQ930x subdriver
++ *
++ * Copyright (C) 2010 Jean-Francois Moine <http://moinejf.free.fr>
++ * Copyright (C) 2006 -2008 Gerard Klaver <gerard at gkall dot hobby dot nl>
++ * Copyright (C) 2007 Sam Revitch <samr7@cs.washington.edu>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
++ */
++
++#define MODULE_NAME "sq930x"
++
++#include "gspca.h"
++#include "jpeg.h"
++
++MODULE_AUTHOR("Jean-Francois Moine <http://moinejf.free.fr>\n"
++		"Gerard Klaver <gerard at gkall dot hobby dot nl\n"
++		"Sam Revitch <samr7@cs.washington.edu>");
++MODULE_DESCRIPTION("GSPCA/SQ930x USB Camera Driver");
++MODULE_LICENSE("GPL");
++
++/* Structure to hold all of our device specific stuff */
++struct sd {
++	struct gspca_dev gspca_dev;	/* !! must be the first item */
++
++	u8 exposure;
++#define EXPOSURE_MIN 1
++#define EXPOSURE_DEF 63
++#define EXPOSURE_MAX 255
++
++	u8 freq;
++
++	u8 quality;
++#define QUALITY_MIN 70
++#define QUALITY_MAX 95
++#define QUALITY_DEF 80
++/* quant = 0:95% 1:90% 2:80% 3:70% */
++
++	u8 gpio[2];
++	u8 nab;
++
++	u8 jpeg_hdr[JPEG_HDR_SZ];
++
++	u8 sensor;
++#define SENSOR_MI0360 0
++#define SENSOR_LZ24BP 1
++	u8 type;
++#define Trust_3500t 0		/* colors BGR ? */
++#define Creative_live_pro 1
++#define Sweex_motion_tracking 2
++#define Creative_ultra_notebook 3
++#define Creative_live_motion 4
++};
++
++static int sd_setexposure(struct gspca_dev *gspca_dev, __s32 val);
++static int sd_getexposure(struct gspca_dev *gspca_dev, __s32 *val);
++static int sd_setfreq(struct gspca_dev *gspca_dev, __s32 val);
++static int sd_getfreq(struct gspca_dev *gspca_dev, __s32 *val);
++
++static const struct ctrl sd_ctrls[] = {
++#define EXPOSURE_IDX 0
++	{
++	    {
++		.id = V4L2_CID_EXPOSURE,
++		.type = V4L2_CTRL_TYPE_INTEGER,
++		.name = "Exposure",
++		.minimum = EXPOSURE_MIN,
++		.maximum = EXPOSURE_MAX,
++		.step = 1,
++		.default_value = EXPOSURE_DEF,
++	    },
++	    .set = sd_setexposure,
++	    .get = sd_getexposure,
++	},
++#define FREQ_IDX 1
++	{
++	    {
++		.id	 = V4L2_CID_POWER_LINE_FREQUENCY,
++		.type    = V4L2_CTRL_TYPE_MENU,
++		.name    = "Light frequency filter",
++		.minimum = 0,
++		.maximum = 2,	/* 0: 0, 1: 50Hz, 2:60Hz */
++		.step    = 1,
++#define FREQ_DEF 0
++		.default_value = FREQ_DEF,
++	    },
++	    .set = sd_setfreq,
++	    .get = sd_getfreq,
++	},
++};
++
++static struct v4l2_pix_format vga_mode[] = {
++	{160, 120, V4L2_PIX_FMT_JPEG, V4L2_FIELD_NONE,
++		.bytesperline = 160,
++		.sizeimage = 160 * 120 * 5 / 8 + 590,
++		.colorspace = V4L2_COLORSPACE_JPEG,
++		.priv = 0},
++	{320, 240, V4L2_PIX_FMT_JPEG, V4L2_FIELD_NONE,
++		.bytesperline = 320,
++		.sizeimage = 320 * 240 * 4 / 8 + 590,
++		.colorspace = V4L2_COLORSPACE_JPEG,
++		.priv = 1},
++	{640, 480, V4L2_PIX_FMT_JPEG, V4L2_FIELD_NONE,
++		.bytesperline = 640,
++		.sizeimage = 640 * 480 * 3 / 8 + 590,
++		.colorspace = V4L2_COLORSPACE_JPEG,
++		.priv = 2},
++};
++
++#define SQ930_CTRL_UCBUS_IO	0x0001
++#define SQ930_CTRL_I2C_IO	0x0002
++#define SQ930_CTRL_GPIO		0x0005
++#define SQ930_CTRL_CAP_START	0x0010
++#define SQ930_CTRL_CAP_STOP	0x0011
++#define SQ930_CTRL_SET_EXPOSURE 0x001d
++#define SQ930_CTRL_RESET	0x001e
++#define SQ930_CTRL_GET_DEV_INFO 0x001f
++
++/* gpio 1 (8..15) */
++#define SQ930_GPIO_DFL_I2C_SDA	0x0001
++#define SQ930_GPIO_DFL_I2C_SCL	0x0002
++#define SQ930_GPIO_RSTBAR	0x0004
++#define SQ930_GPIO_EXTRA1	0x0040
++#define SQ930_GPIO_EXTRA2	0x0080
++/* gpio 3 (24..31) */
++#define SQ930_GPIO_POWER	0x0200
++#define SQ930_GPIO_DFL_LED	0x1000
++
++struct ucbus_write_cmd {
++	u16	bw_addr;
++	u8	bw_data;
++};
++struct i2c_write_cmd {
++	u8	reg;
++	u16	val;
++};
++
++static const struct ucbus_write_cmd mi0360_cap_start_0[] = {
++	{0x0354, 0x00}, {0x03fa, 0x00}, {0xf332, 0xcc}, {0xf333, 0xcc},
++	{0xf334, 0xcc}, {0xf335, 0xcc}, {0xf33f, 0x00}
++};
++static const struct i2c_write_cmd mi0360_init_23[] = {
++	{0x30, 0x0040},		/* reserved - def 0x0005 */
++	{0x31, 0x0000},		/* reserved - def 0x002a */
++	{0x34, 0x0100},		/* reserved - def 0x0100 */
++	{0x3d, 0x068f},		/* reserved - def 0x068f */
++/*fixme - bayer:
++	{0x30, 0x0004},
++	{0x34, 0x0100},
++	{0x3d, 0x068f},
++	{0x40, 0x01e0},
++*/
++};
++static const struct i2c_write_cmd mi0360_init_24[] = {
++	{0x03, 0x01e5},		/* window height */
++	{0x04, 0x0285},		/* window width */
++};
++static const struct i2c_write_cmd mi0360_init_25[] = {
++	{0x35, 0x0020},		/* global gain */
++	{0x2b, 0x0020},		/* green1 gain */
++	{0x2c, 0x002a},		/* blue gain */
++	{0x2d, 0x0028},		/* red gain */
++	{0x2e, 0x0020},		/* green2 gain */
++};
++/* init_142a - 142a - 144 */
++static const struct ucbus_write_cmd mi0360_cap_start_1[] = {
++	{0xf5f0, 0x11}, {0xf5f1, 0x99}, {0xf5f2, 0x80}, {0xf5f3, 0x80},
++	{0xf5f4, 0xa6},
++	{0xf5f0, 0x51}, {0xf5f1, 0x99}, {0xf5f2, 0x80}, {0xf5f3, 0x80},
++	{0xf5f4, 0xa6},
++	{0xf5fa, 0x00}, {0xf5f6, 0x00}, {0xf5f7, 0x00}, {0xf5f8, 0x00},
++	{0xf5f9, 0x00}
++};
++static const struct i2c_write_cmd mi0360_start_2[] = {
++	{0x62, 0x041d},		/* reserved - def 0x0418 */
++};
++static const struct i2c_write_cmd mi0360_start_3[] = {
++	{0x05, 0x007b},		/* horiz blanking */
++};
++static const struct i2c_write_cmd mi0360_start_4[] = {
++	{0x05, 0x03f5},		/* horiz blanking */
++/*fixme - bayer:
++	{0x05, 0x007b},
++ */
++};
++
++static const struct ucbus_write_cmd lz24bp_cap_start_0[] = {
++	{0x0354, 0x00}, {0x03fa, 0x00}, {0xf800, 0x02}, {0xf801, 0xbe},
++	{0xf802, 0xc6}, {0xf804, 0x00}, {0xf808, 0x00}, {0xf809, 0x06},
++	{0xf80a, 0x01}, {0xf80b, 0xfe}, {0xf807, 0x84}, {0xf80c, 0x02},
++	{0xf80d, 0xf7}, {0xf80e, 0x03}, {0xf80f, 0x0b}, {0xf81c, 0x00},
++	{0xf81d, 0x49}, {0xf81e, 0x03}, {0xf81f, 0x0b}, {0xf83a, 0x00},
++	{0xf83b, 0x01}, {0xf83c, 0x00}, {0xf83d, 0x6b}, {0xf810, 0x03},
++	{0xf811, 0x10}, {0xf812, 0x02}, {0xf813, 0x6f}, {0xf803, 0x00},
++	{0xf814, 0x00}, {0xf815, 0x44}, {0xf816, 0x00}, {0xf817, 0x48},
++	{0xf818, 0x00}, {0xf819, 0x25}, {0xf81a, 0x00}, {0xf81b, 0x3c},
++	{0xf82f, 0x03}, {0xf820, 0xff}, {0xf821, 0x0d}, {0xf822, 0xff},
++	{0xf823, 0x07}, {0xf824, 0xfd}, {0xf825, 0x07}, {0xf826, 0xf0},
++	{0xf827, 0x0c}, {0xf828, 0xff}, {0xf829, 0x03}, {0xf82a, 0xff},
++	{0xf82b, 0x0c}, {0xf82c, 0xfc}, {0xf82d, 0x01}, {0xf82e, 0x00},
++	{0xf830, 0x00}, {0xf831, 0x47}, {0xf832, 0x00}, {0xf833, 0x00},
++	{0xf850, 0x00}, {0xf851, 0x00}, {0xf852, 0x00}, {0xf853, 0x24},
++	{0xf854, 0x00}, {0xf855, 0x0c}, {0xf856, 0x00}, {0xf857, 0x30},
++	{0xf858, 0x00}, {0xf859, 0x18}, {0xf85a, 0x00}, {0xf85b, 0x3c},
++	{0xf85c, 0x00}, {0xf85d, 0x18}, {0xf85e, 0x00}, {0xf85f, 0x3c},
++	{0xf860, 0xff}, {0xf861, 0x37}, {0xf862, 0xff}, {0xf863, 0x1d},
++	{0xf864, 0xff}, {0xf865, 0x98}, {0xf866, 0xff}, {0xf867, 0xc0},
++	{0xf868, 0x00}, {0xf869, 0x37}, {0xf86c, 0x02}, {0xf86d, 0x1d},
++	{0xf86a, 0x00}, {0xf86b, 0x37}, {0xf86e, 0x02}, {0xf86f, 0x1d},
++	{0xf870, 0x01}, {0xf871, 0xc6}, {0xf872, 0x02}, {0xf873, 0x04},
++	{0xf874, 0x01}, {0xf875, 0xc6}, {0xf876, 0x02}, {0xf877, 0x04},
++	{0xf878, 0x0f}, {0xf879, 0x0f}, {0xf87a, 0xff}, {0xf87b, 0xff},
++	{0xf800, 0x03}
++};
++static const struct ucbus_write_cmd lz24bp_cap_start_1_gen[] = {
++	{0xf5f0, 0x00}, {0xf5f1, 0xff}, {0xf5f2, 0x80}, {0xf5f3, 0x80},
++	{0xf5f4, 0xb3},
++	{0xf5f0, 0x40}, {0xf5f1, 0xff}, {0xf5f2, 0x80}, {0xf5f3, 0x80},
++	{0xf5f4, 0xb3},
++	{0xf5fa, 0x00}, {0xf5f6, 0x00}, {0xf5f7, 0x00}, {0xf5f8, 0x00},
++	{0xf5f9, 0x00}
++};
++
++static const struct ucbus_write_cmd lz24bp_cap_start_1_wclm[] = {
++	{0xf5f0, 0x00}, {0xf5f1, 0xff}, {0xf5f2, 0x88}, {0xf5f3, 0x88},
++	{0xf5f4, 0xc0},
++	{0xf5f0, 0x40}, {0xf5f1, 0xff}, {0xf5f2, 0x88}, {0xf5f3, 0x88},
++	{0xf5f4, 0xc0},
++	{0xf5fa, 0x00}, {0xf5f6, 0x00}, {0xf5f7, 0x00}, {0xf5f8, 0x00},
++	{0xf5f9, 0x00}
++};
++
++static const struct ucbus_write_cmd lz24bp_cap_start_2[] = {
++	{0xf800, 0x02}, {0xf807, 0xff}, {0xf805, 0x80}, {0xf806, 0x00},
++	{0xf807, 0x7f}, {0xf800, 0x03},
++	{0xf800, 0x02}, {0xf807, 0xff}, {0xf805, 0x4e}, {0xf806, 0x00},
++	{0xf807, 0x7f}, {0xf800, 0x03},
++	{0xf800, 0x02}, {0xf807, 0xff}, {0xf805, 0xc0}, {0xf806, 0x48},
++	{0xf807, 0x7f}, {0xf800, 0x03},
++	{0xf800, 0x02}, {0xf807, 0xff}, {0xf805, 0x00}, {0xf806, 0x00},
++	{0xf807, 0x7f}, {0xf800, 0x03}
++};
++
++static const struct {
++	u8	cc_sizeid;
++	u8	cc_bytes[32];
++} lz24bp_capconfig[] = {
++	/* JPEG, 160x120 */
++	{0,
++	  {0x01, 0x1f, 0x20, 0x0e, 0x00, 0x9f, 0x02, 0xee,
++	   0x01, 0x02, 0x00, 0x08, 0x18, 0x12, 0x78, 0xc8,
++	   0x02, 0x8b, 0x00, 0x8b, 0x00, 0x41, 0x01, 0x41,
++	   0x01, 0x41, 0x01, 0x05, 0x40, 0x01, 0xf0, 0x00}},
++
++	/* JPEG, 320x240 */
++	{2,
++	  {0x01, 0x22, 0x20, 0x0e, 0x00, 0xa2, 0x02, 0xee,
++/*fixme: != for mi0360:
++	  {0x01, 0x02, 0x20, 0x03, 0x20, 0x82, 0x02, 0xe3, */
++	   0x01, 0x02, 0x00, 0x08, 0x18, 0x12, 0x78, 0xc8,
++	   0x02, 0xdf, 0x01, 0x00, 0x00, 0x3f, 0x01, 0x3f,
++	   0x01, 0x00, 0x00, 0x05, 0x40, 0x01, 0xf0, 0x00}},
++
++	/* JPEG, 640x480 */
++	{4,
++	  {0x01, 0x22, 0x20, 0x0e, 0x00, 0xa2, 0x02, 0xf0,
++	   0x01, 0x02, 0x00, 0x08, 0x18, 0x12, 0x78, 0xc8,
++	   0x07, 0xe1, 0x01, 0xe1, 0x01, 0x3f, 0x01, 0x3f,
++	   0x01, 0x3f, 0x01, 0x05, 0x80, 0x02, 0xe0, 0x01}},
++};
++
++/*
++ * We store shutter timing and gain values in three tables.  In two of
++ * the three tables, the timing values also encode flicker suppression
++ * for indoor lighting.
++ */
++struct lz24bp_exposure_vals {
++	u16 shutter;
++	u8 gain;
++};
++static const struct lz24bp_exposure_vals lz24bp_std_tbl[] = {
++	{0x1,   0x40}, {0x1,   0x42}, {0x1,   0x44}, {0x1,   0x46},
++	{0x1,   0x48}, {0x1,   0x4b}, {0x1,   0x4d}, {0x1,   0x50},
++	{0x1,   0x52}, {0x1,   0x55}, {0x1,   0x58}, {0x1,   0x5b},
++	{0x1,   0x5e}, {0x1,   0x61}, {0x1,   0x64}, {0x1,   0x67},
++	{0x1,   0x6b}, {0x1,   0x6e}, {0x1,   0x72}, {0x1,   0x75},
++	{0x1,   0x79}, {0x1,   0x7d}, {0x2,   0x41}, {0x2,   0x43},
++	{0x2,   0x45}, {0x2,   0x47}, {0x2,   0x4a}, {0x2,   0x4c},
++	{0x2,   0x4f}, {0x2,   0x51}, {0x2,   0x54}, {0x2,   0x57},
++	{0x2,   0x5a}, {0x2,   0x5c}, {0x3,   0x40}, {0x3,   0x42},
++	{0x3,   0x44}, {0x3,   0x46}, {0x3,   0x48}, {0x3,   0x4b},
++	{0x3,   0x4d}, {0x3,   0x50}, {0x3,   0x53}, {0x4,   0x40},
++	{0x4,   0x42}, {0x4,   0x44}, {0x4,   0x47}, {0x4,   0x49},
++	{0x4,   0x4b}, {0x4,   0x4e}, {0x5,   0x40}, {0x5,   0x42},
++	{0x5,   0x45}, {0x5,   0x47}, {0x5,   0x49}, {0x5,   0x4c},
++	{0x6,   0x41}, {0x6,   0x43}, {0x6,   0x46}, {0x6,   0x48},
++	{0x7,   0x40}, {0x7,   0x42}, {0x7,   0x44}, {0x7,   0x46},
++	{0x7,   0x49}, {0x8,   0x42}, {0x8,   0x44}, {0x8,   0x46},
++	{0x9,   0x40}, {0x9,   0x42}, {0x9,   0x45}, {0xa,   0x40},
++	{0xa,   0x42}, {0xa,   0x44}, {0xb,   0x40}, {0xb,   0x42},
++	{0xb,   0x44}, {0xc,   0x41}, {0xc,   0x43}, {0xd,   0x40},
++	{0xd,   0x42}, {0xd,   0x44}, {0xe,   0x41}, {0xe,   0x43},
++	{0xf,   0x41}, {0xf,   0x43}, {0x10,  0x41}, {0x10,  0x43},
++	{0x11,  0x41}, {0x12,  0x40}, {0x12,  0x42}, {0x13,  0x41},
++	{0x13,  0x43}, {0x14,  0x41}, {0x15,  0x40}, {0x16,  0x40},
++	{0x16,  0x42}, {0x17,  0x41}, {0x18,  0x40}, {0x19,  0x40},
++	{0x19,  0x42}, {0x1a,  0x41}, {0x1b,  0x41}, {0x1c,  0x41},
++	{0x1d,  0x41}, {0x1e,  0x41}, {0x1f,  0x41}, {0x20,  0x41},
++	{0x21,  0x41}, {0x22,  0x41}, {0x23,  0x41}, {0x25,  0x40},
++	{0x26,  0x40}, {0x27,  0x41}, {0x29,  0x40}, {0x2a,  0x40},
++	{0x2b,  0x41}, {0x2d,  0x40}, {0x2e,  0x41}, {0x30,  0x40},
++	{0x31,  0x41}, {0x33,  0x40}, {0x35,  0x40}, {0x37,  0x40},
++	{0x38,  0x41}, {0x3a,  0x40}, {0x3c,  0x40}, {0x3e,  0x40},
++	{0x40,  0x40}, {0x43,  0x40}, {0x45,  0x40}, {0x47,  0x40},
++	{0x49,  0x40}, {0x4c,  0x40}, {0x4e,  0x40}, {0x51,  0x40},
++	{0x54,  0x40}, {0x57,  0x40}, {0x59,  0x40}, {0x5c,  0x40},
++	{0x60,  0x40}, {0x63,  0x40}, {0x66,  0x40}, {0x6a,  0x40},
++	{0x6d,  0x40}, {0x71,  0x40}, {0x74,  0x40}, {0x78,  0x40},
++	{0x7c,  0x40}, {0x81,  0x40}, {0x85,  0x40}, {0x89,  0x40},
++	{0x8e,  0x40}, {0x93,  0x40}, {0x97,  0x40}, {0x9d,  0x40},
++	{0xa2,  0x40}, {0xa7,  0x40}, {0xad,  0x40}, {0xb3,  0x40},
++	{0xb8,  0x40}, {0xbf,  0x40}, {0xc5,  0x40}, {0x0cc, 0x40},
++	{0x0d2, 0x40}, {0x0d9, 0x40}, {0x0e1, 0x40}, {0x0e8, 0x40},
++	{0x0f0, 0x40}, {0x0f8, 0x40}, {0x100, 0x40}, {0x109, 0x40},
++	{0x112, 0x40}, {0x11b, 0x40}, {0x124, 0x40}, {0x12e, 0x40},
++	{0x138, 0x40}, {0x142, 0x40}, {0x14d, 0x40}, {0x158, 0x40},
++	{0x164, 0x40}, {0x170, 0x40}, {0x17c, 0x40}, {0x188, 0x40},
++	{0x196, 0x40}, {0x1a3, 0x40}, {0x1b1, 0x40}, {0x1bf, 0x40},
++	{0x1ce, 0x40}, {0x1de, 0x40}, {0x1ee, 0x40}, {0x1fe, 0x40},
++	{0x20f, 0x40}, {0x221, 0x40}, {0x233, 0x40}, {0x246, 0x40},
++	{0x259, 0x40}, {0x26d, 0x40}, {0x26d, 0x42}, {0x26d, 0x44},
++	{0x26d, 0x46}, {0x26d, 0x49}, {0x26d, 0x4b}, {0x26d, 0x4d},
++	{0x26d, 0x50}, {0x26d, 0x53}, {0x26d, 0x56}, {0x26d, 0x58},
++	{0x26d, 0x5b}, {0x26d, 0x5e}, {0x26d, 0x62}, {0x26d, 0x65},
++	{0x26d, 0x68}, {0x26d, 0x6c}, {0x26d, 0x6f}, {0x26d, 0x73},
++	{0x26d, 0x77}, {0x26d, 0x7b}, {0x26d, 0x7f}, {0x27e, 0x80},
++	{0x294, 0x80}, {0x2aa, 0x80}, {0x2c0, 0x80}, {0x2d8, 0x80},
++	{0x2f0, 0x80}, {0x309, 0x80}, {0x323, 0x80}, {0x33e, 0x80},
++	{0x359, 0x80}, {0x376, 0x80}, {0x394, 0x80}, {0x3b2, 0x80},
++	{0x3d2, 0x80}, {0x3f2, 0x80}, {0x414, 0x80}, {0x437, 0x80},
++	{0x45b, 0x80}, {0x480, 0x80}, {0x4a6, 0x80}, {0x4ce, 0x80},
++	{0x4f7, 0x80}, {0x521, 0x80}, {0x54d, 0x80}, {0x57a, 0x80},
++	{0x5a9, 0x80}, {0x5d9, 0x80}, {0x60b, 0x80}, {0x63e, 0x80},
++	{0x673, 0x80}, {0x6aa, 0x80}, {0x6e3, 0x80}, {0x71e, 0x80},
++	{0x75b, 0x80}, {0x799, 0x80}, {0x7da, 0x80}, {0x81d, 0x80},
++	{0x862, 0x80}, {0x8aa, 0x80}, {0x8f4, 0x80}, {0x940, 0x80},
++	{0x98f, 0x80}, {0x9e0, 0x80}, {0xa35, 0x80}, {0xa8c, 0x80},
++	{0xae6, 0x80}, {0xb43, 0x80}, {0xba3, 0x80}, {0xc06, 0x80},
++	{0xc6c, 0x80}, {0xcd6, 0x80}, {0xd44, 0x80}, {0xdb5, 0x80},
++	{0xe2a, 0x80}, {0xea2, 0x80}, {0xf1f, 0x80}, {0xfa0, 0x80},
++	{0xfff, 0x84}, {0xfff, 0x88}, {0xfff, 0x8d}, {0xfff, 0x91},
++	{0xfff, 0x96}, {0xfff, 0x9b}, {0xfff, 0xa1}, {0xfff, 0xa6},
++	{0xfff, 0xab}, {0xfff, 0xb1}, {0xfff, 0xb7}, {0xfff, 0xbd},
++	{0xfff, 0xc3}, {0xfff, 0xca}, {0xfff, 0xd1}, {0xfff, 0xd8},
++	{0xfff, 0xdf}, {0xfff, 0xe6}, {0xfff, 0xee}, {0xfff, 0xf6},
++	{0xfff, 0xfe},
++};
++static const struct lz24bp_exposure_vals lz24bp_50hz_tbl[] = {
++	{0xbf,  0x40}, {0xbf,  0x42}, {0xbf,  0x44}, {0xbf,  0x46},
++	{0xbf,  0x49}, {0xbf,  0x4b}, {0xbf,  0x4e}, {0xbf,  0x50},
++	{0xbf,  0x53}, {0xbf,  0x56}, {0xbf,  0x58}, {0xbf,  0x5b},
++	{0xbf,  0x5e}, {0xbf,  0x62}, {0xbf,  0x65}, {0xbf,  0x68},
++	{0xbf,  0x6c}, {0xbf,  0x6f}, {0xbf,  0x73}, {0xbf,  0x77},
++	{0xbf,  0x7b}, {0xbf,  0x7f}, {0x17e, 0x41}, {0x17e, 0x44},
++	{0x17e, 0x46}, {0x17e, 0x48}, {0x17e, 0x4b}, {0x17e, 0x4d},
++	{0x17e, 0x50}, {0x17e, 0x52}, {0x17e, 0x55}, {0x17e, 0x58},
++	{0x17e, 0x5b}, {0x17e, 0x5e}, {0x23d, 0x41}, {0x23d, 0x43},
++	{0x23d, 0x45}, {0x23d, 0x47}, {0x23d, 0x4a}, {0x23d, 0x4c},
++	{0x23d, 0x4f}, {0x23d, 0x51}, {0x23d, 0x54}, {0x23d, 0x57},
++	{0x23d, 0x5a}, {0x23d, 0x5d}, {0x23d, 0x60}, {0x23d, 0x63},
++	{0x23d, 0x66}, {0x23d, 0x6a}, {0x23d, 0x6d}, {0x23d, 0x71},
++	{0x23d, 0x75}, {0x23d, 0x79}, {0x23d, 0x7d}, {0x23d, 0x81},
++	{0x23d, 0x85}, {0x23d, 0x8a}, {0x23d, 0x8e}, {0x23d, 0x93},
++	{0x23d, 0x98}, {0x23d, 0x9d}, {0x23d, 0xa2}, {0x23d, 0xa8},
++	{0x2fd, 0x82}, {0x2fd, 0x86}, {0x2fd, 0x8b}, {0x2fd, 0x8f},
++	{0x2fd, 0x94}, {0x2fd, 0x99}, {0x2fd, 0x9e}, {0x3bc, 0x83},
++	{0x3bc, 0x87}, {0x3bc, 0x8b}, {0x3bc, 0x90}, {0x3bc, 0x95},
++	{0x47b, 0x80}, {0x47b, 0x84}, {0x47b, 0x89}, {0x47b, 0x8d},
++	{0x47b, 0x92}, {0x53b, 0x81}, {0x53b, 0x86}, {0x53b, 0x8a},
++	{0x53b, 0x8f}, {0x5fa, 0x81}, {0x5fa, 0x85}, {0x5fa, 0x8a},
++	{0x5fa, 0x8e}, {0x6b9, 0x83}, {0x6b9, 0x87}, {0x6b9, 0x8c},
++	{0x779, 0x82}, {0x779, 0x86}, {0x779, 0x8b}, {0x838, 0x82},
++	{0x838, 0x87}, {0x838, 0x8b}, {0x8f7, 0x84}, {0x8f7, 0x88},
++	{0x9b7, 0x82}, {0x9b7, 0x86}, {0xa76, 0x81}, {0xa76, 0x85},
++	{0xb35, 0x80}, {0xb35, 0x85}, {0xbf5, 0x80}, {0xbf5, 0x85},
++	{0xcb4, 0x81}, {0xcb4, 0x85}, {0xd73, 0x82}, {0xd73, 0x86},
++	{0xe33, 0x84}, {0xef2, 0x81}, {0xef2, 0x85}, {0xfb1, 0x83},
++};
++static const struct lz24bp_exposure_vals lz24bp_60hz_tbl[] = {
++	{0x9f,  0x40}, {0x9f,  0x42}, {0x9f,  0x44}, {0x9f,  0x46},
++	{0x9f,  0x49}, {0x9f,  0x4b}, {0x9f,  0x4e}, {0x9f,  0x50},
++	{0x9f,  0x53}, {0x9f,  0x56}, {0x9f,  0x59}, {0x9f,  0x5c},
++	{0x9f,  0x5f}, {0x9f,  0x62}, {0x9f,  0x65}, {0x9f,  0x68},
++	{0x9f,  0x6c}, {0x9f,  0x6f}, {0x9f,  0x73}, {0x9f,  0x77},
++	{0x9f,  0x7b}, {0x9f,  0x7f}, {0x13e, 0x41}, {0x13e, 0x44},
++	{0x13e, 0x46}, {0x13e, 0x48}, {0x13e, 0x4b}, {0x13e, 0x4d},
++	{0x13e, 0x50}, {0x13e, 0x52}, {0x13e, 0x55}, {0x13e, 0x58},
++	{0x13e, 0x5b}, {0x13e, 0x5e}, {0x1de, 0x41}, {0x1de, 0x43},
++	{0x1de, 0x45}, {0x1de, 0x47}, {0x1de, 0x4a}, {0x1de, 0x4c},
++	{0x1de, 0x4f}, {0x1de, 0x51}, {0x1de, 0x54}, {0x27d, 0x41},
++	{0x27d, 0x43}, {0x27d, 0x45}, {0x27d, 0x48}, {0x27d, 0x4a},
++	{0x27d, 0x4d}, {0x27d, 0x4f}, {0x27d, 0x52}, {0x27d, 0x55},
++	{0x27d, 0x57}, {0x27d, 0x5a}, {0x27d, 0x5d}, {0x27d, 0x61},
++	{0x27d, 0x64}, {0x27d, 0x67}, {0x27d, 0x6b}, {0x27d, 0x6e},
++	{0x27d, 0x72}, {0x27d, 0x76}, {0x27d, 0x7a}, {0x27d, 0x7e},
++	{0x27d, 0x82}, {0x27d, 0x86}, {0x27d, 0x8b}, {0x27d, 0x8f},
++	{0x27d, 0x94}, {0x27d, 0x99}, {0x27d, 0x9e}, {0x31d, 0x83},
++	{0x31d, 0x87}, {0x31d, 0x8b}, {0x31d, 0x90}, {0x31d, 0x95},
++	{0x3bc, 0x80}, {0x3bc, 0x84}, {0x3bc, 0x89}, {0x3bc, 0x8d},
++	{0x3bc, 0x92}, {0x45c, 0x81}, {0x45c, 0x86}, {0x45c, 0x8a},
++	{0x45c, 0x8f}, {0x4fb, 0x81}, {0x4fb, 0x85}, {0x4fb, 0x8a},
++	{0x4fb, 0x8e}, {0x59a, 0x83}, {0x59a, 0x87}, {0x59a, 0x8c},
++	{0x63a, 0x82}, {0x63a, 0x86}, {0x63a, 0x8b}, {0x6d9, 0x82},
++	{0x6d9, 0x87}, {0x6d9, 0x8b}, {0x779, 0x84}, {0x779, 0x88},
++	{0x818, 0x82}, {0x818, 0x86}, {0x8b8, 0x81}, {0x8b8, 0x85},
++	{0x957, 0x80}, {0x957, 0x85}, {0x9f7, 0x80}, {0x9f7, 0x85},
++	{0xa96, 0x81}, {0xa96, 0x85}, {0xb35, 0x82}, {0xb35, 0x86},
++	{0xbd5, 0x84}, {0xc74, 0x81}, {0xc74, 0x85}, {0xd14, 0x83},
++	{0xdb3, 0x82}, {0xe53, 0x80}, {0xe53, 0x84}, {0xef2, 0x83}
++};
++static const struct {
++	const struct lz24bp_exposure_vals *vals;
++	int count;
++} lz24bp_exposure_tables[3] = {
++	{lz24bp_std_tbl, ARRAY_SIZE(lz24bp_std_tbl)},
++	{lz24bp_50hz_tbl, ARRAY_SIZE(lz24bp_50hz_tbl)},
++	{lz24bp_60hz_tbl, ARRAY_SIZE(lz24bp_60hz_tbl)}
++};
++
++static void reg_r(struct gspca_dev *gspca_dev,
++		u16 value, int len)
++{
++	usb_control_msg(gspca_dev->dev,
++			usb_rcvctrlpipe(gspca_dev->dev, 0),
++			0xc0,
++			USB_DIR_IN | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
++			value, 0, gspca_dev->usb_buf, len,
++			500);
++}
++
++static void reg_w(struct gspca_dev *gspca_dev, u16 value, u16 index)
++{
++	int ret;
++
++	if (gspca_dev->usb_err < 0)
++		return;
++	PDEBUG(D_USBO, "reg_w v: %04x i: %04x", value, index);
++	ret = usb_control_msg(gspca_dev->dev,
++			usb_sndctrlpipe(gspca_dev->dev, 0),
++			0x0c,			/* request */
++			USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
++			value, index, NULL, 0,
++			500);
++	msleep(10);
++	if (ret < 0) {
++		PDEBUG(D_ERR, "reg_w failed %d", ret);
++		gspca_dev->usb_err = ret;
++	}
++}
++
++static void reg_wb(struct gspca_dev *gspca_dev, u16 value, u16 index,
++		const u8 *data, int len)
++{
++	int ret;
++
++	if (gspca_dev->usb_err < 0)
++		return;
++	PDEBUG(D_USBO, "reg_wb v: %04x i: %04x %02x...%02x",
++			value, index, *data, data[len - 1]);
++	memcpy(gspca_dev->usb_buf, data, len);
++	ret = usb_control_msg(gspca_dev->dev,
++			usb_sndctrlpipe(gspca_dev->dev, 0),
++			0x0c,			/* request */
++			USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
++			value, index, gspca_dev->usb_buf, len,
++			500);
++	msleep(10);
++	if (ret < 0) {
++		PDEBUG(D_ERR, "reg_wb failed %d", ret);
++		gspca_dev->usb_err = ret;
++	}
++}
++
++static void i2c_write(struct gspca_dev *gspca_dev,
++			const struct i2c_write_cmd *cmd,
++			int ncmds)
++{
++	u16 val, idx;
++	u8 *buf;
++	int ret;
++
++	if (gspca_dev->usb_err < 0)
++		return;
++
++	val = (0x5d << 8) | SQ930_CTRL_I2C_IO;	/* 0x5d = mi0360 i2c addr */
++	idx = (cmd->val & 0xff00) | cmd->reg;
++
++	buf = gspca_dev->usb_buf;
++	*buf++ = 0x80;
++	*buf++ = cmd->val;
++
++	while (--ncmds > 0) {
++		cmd++;
++		*buf++ = cmd->reg;
++		*buf++ = cmd->val >> 8;
++		*buf++ = 0x80;
++		*buf++ = cmd->val;
++	}
++
++	PDEBUG(D_USBO, "i2c_w v: %04x i: %04x %02x...%02x",
++			val, idx, gspca_dev->usb_buf[0], buf[-1]);
++	ret = usb_control_msg(gspca_dev->dev,
++			usb_sndctrlpipe(gspca_dev->dev, 0),
++			0x0c,			/* request */
++			USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
++			val, idx,
++			gspca_dev->usb_buf, buf - gspca_dev->usb_buf,
++			500);
++	if (ret < 0) {
++		PDEBUG(D_ERR, "i2c_write failed %d", ret);
++		gspca_dev->usb_err = ret;
++	}
++}
++
++static void ucbus_write(struct gspca_dev *gspca_dev,
++			const struct ucbus_write_cmd *cmd,
++			int ncmds,
++			int batchsize)
++{
++	u8 *buf;
++	u16 val, idx;
++	int len, ret;
++
++	if (gspca_dev->usb_err < 0)
++		return;
++
++#ifdef GSPCA_DEBUG
++	if ((batchsize - 1) * 3 > USB_BUF_SZ) {
++		err("Bug: usb_buf overflow");
++		gspca_dev->usb_err = -ENOMEM;
++		return;
++	}
++#endif
++
++	for (;;) {
++		len = ncmds;
++		if (len > batchsize)
++			len = batchsize;
++		ncmds -= len;
++
++		val = (cmd->bw_addr << 8) | SQ930_CTRL_UCBUS_IO;
++		idx = (cmd->bw_data << 8) | (cmd->bw_addr >> 8);
++
++		buf = gspca_dev->usb_buf;
++		while (--len > 0) {
++			cmd++;
++			*buf++ = cmd->bw_addr;
++			*buf++ = cmd->bw_addr >> 8;
++			*buf++ = cmd->bw_data;
++		}
++
++		PDEBUG(D_USBO, "ucbus v: %04x i: %04x %02x...%02x",
++				val, idx, gspca_dev->usb_buf[0], buf[-1]);
++		ret = usb_control_msg(gspca_dev->dev,
++				usb_sndctrlpipe(gspca_dev->dev, 0),
++				0x0c,			/* request */
++			   USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
++				val, idx,
++				gspca_dev->usb_buf, buf - gspca_dev->usb_buf,
++				500);
++		if (ret < 0) {
++			PDEBUG(D_ERR, "ucbus_write failed %d", ret);
++			gspca_dev->usb_err = ret;
++			return;
++		}
++		msleep(10);
++		if (ncmds <= 0)
++			break;
++		cmd++;
++	}
++}
++
++static void gpio_set(struct sd *sd, u16 val, u16 mask)
++{
++	struct gspca_dev *gspca_dev = &sd->gspca_dev;
++
++	if (mask & 0x00ff) {
++		sd->gpio[0] &= ~mask;
++		sd->gpio[0] |= val;
++		reg_w(gspca_dev, 0x0100 | SQ930_CTRL_GPIO,
++			~sd->gpio[0] << 8);
++	}
++	mask >>= 8;
++	val >>= 8;
++	if (mask) {
++		sd->gpio[1] &= ~mask;
++		sd->gpio[1] |= val;
++		reg_w(gspca_dev, 0x0300 | SQ930_CTRL_GPIO,
++			~sd->gpio[1] << 8);
++	}
++}
++
++static void sq930_led_set(struct sd *sd, int led)
++{
++	if (led)
++		led = SQ930_GPIO_DFL_LED;
++	gpio_set(sd, led, SQ930_GPIO_DFL_LED);
++}
++
++static void global_init(struct sd *sd, int first_time)
++{
++	static struct ucbus_write_cmd clkfreq_cmd =
++				{0xf031, 0};	/* SQ930_CLKFREQ_60MHZ */
++
++	ucbus_write(&sd->gspca_dev, &clkfreq_cmd, 1, 1);
++
++	gpio_set(sd, SQ930_GPIO_POWER, 0xff00);
++	switch (sd->sensor) {
++	case SENSOR_MI0360:
++		if (first_time) {
++			ucbus_write(&sd->gspca_dev,
++					mi0360_cap_start_0,
++					ARRAY_SIZE(mi0360_cap_start_0),
++					8);
++			gpio_set(sd, SQ930_GPIO_RSTBAR, 0x00ff);
++		} else {
++			gpio_set(sd, SQ930_GPIO_EXTRA2 | SQ930_GPIO_RSTBAR,
++					0x00ff);
++		}
++		gpio_set(sd, SQ930_GPIO_DFL_I2C_SCL | SQ930_GPIO_DFL_I2C_SDA,
++			     SQ930_GPIO_RSTBAR |
++			     SQ930_GPIO_DFL_I2C_SCL | SQ930_GPIO_DFL_I2C_SDA);
++		gpio_set(sd, 0, SQ930_GPIO_DFL_I2C_SCL);
++		gpio_set(sd, 0, SQ930_GPIO_DFL_I2C_SDA);
++		gpio_set(sd, 0, SQ930_GPIO_DFL_I2C_SDA);
++		gpio_set(sd, SQ930_GPIO_EXTRA2, SQ930_GPIO_EXTRA2);
++		break;
++	default:
++/*	case SENSOR_LZ24BP: */
++		if (sd->type == Creative_ultra_notebook)
++			gpio_set(sd, SQ930_GPIO_EXTRA1, 0x00ff);
++		else			/* creative_live_motion */
++			gpio_set(sd, 0, 0x00ff);
++		msleep(50);
++		if (first_time)
++			ucbus_write(&sd->gspca_dev,
++					lz24bp_cap_start_0,
++					8, 8);
++		gpio_set(sd, 0, 0x0001);		/* no change */
++		gpio_set(sd, SQ930_GPIO_DFL_I2C_SCL | SQ930_GPIO_DFL_I2C_SDA,
++			     SQ930_GPIO_DFL_I2C_SCL | SQ930_GPIO_DFL_I2C_SDA);
++		gpio_set(sd, 0,
++			     SQ930_GPIO_DFL_I2C_SCL);
++		gpio_set(sd, 0,
++			     SQ930_GPIO_DFL_I2C_SDA);
++		gpio_set(sd, SQ930_GPIO_RSTBAR,
++			     SQ930_GPIO_RSTBAR);
++		break;
++	}
++}
++
++static void lz24bp_ppl(struct sd *sd, u16 ppl)
++{
++	struct ucbus_write_cmd cmds[2] = {
++		{0xf810, ppl >> 8},
++		{0xf811, ppl}
++	};
++
++	ucbus_write(&sd->gspca_dev, cmds, ARRAY_SIZE(cmds), 2);
++}
++
++static void setexposure(struct gspca_dev *gspca_dev)
++{
++	struct sd *sd = (struct sd *) gspca_dev;
++	const struct lz24bp_exposure_vals *vals;
++	int i, integclks, intstartclk, frameclks;
++	u8 buf[5];
++
++	i = sd->exposure * lz24bp_exposure_tables[sd->freq].count / 256;
++	vals = &lz24bp_exposure_tables[sd->freq].vals[i];
++	integclks = vals->shutter;
++	if (integclks >= 0x26f) {
++		intstartclk = integclks - 0x26f;
++		frameclks = 0x26f;
++	} else {
++		intstartclk = 0;
++		frameclks = integclks;
++	}
++	buf[0] = intstartclk >> 8;
++	buf[1] = intstartclk;
++	buf[2] = frameclks >> 8;
++	buf[3] = frameclks;
++	buf[4] = vals->gain;
++	reg_wb(gspca_dev, SQ930_CTRL_SET_EXPOSURE, 0, buf, 5);
++#if 0
++/*fixme: for mi0360: */
++	buf[0] = 0x5d;			/* i2c_slave_addr */
++	buf[1] = 0x08;			/* 2 * ni2c */
++	buf[2] = 0x09;
++	buf[3] = 0x07 or 00..04
++	buf[4] = 0x80;
++	buf[5] = 0xfd or ff,54,aa,ff,a9,fe,53
++	buf[6] = 0x35;
++	buf[7] = 0;
++	buf[8] = 0x80;
++	buf[9] = a3..ad or a9,a0..a6
++	buf[4..8] = as previous		(gain seems ok with 83)
++	reg_wb(gspca_dev, 0x100 | SQ930_CTRL_SET_EXPOSURE, 0, buf, sizeof buf);
++#endif
++}
++
++/* This function is called at probe time just before sd_init */
++static int sd_config(struct gspca_dev *gspca_dev,
++		const struct usb_device_id *id)
++{
++	struct sd *sd = (struct sd *) gspca_dev;
++	struct cam *cam = &gspca_dev->cam;
++
++	sd->sensor = id->driver_info >> 8;
++	sd->type = id->driver_info;
++	sd->gpio[0] = sd->gpio[1] = 0xff;	/* force gpio rewrite */
++
++	cam->cam_mode = vga_mode;
++	cam->nmodes = ARRAY_SIZE(vga_mode);
++
++	cam->bulk = 1;
++	cam->bulk_size = 5128;
++	cam->bulk_nurbs = 2;
++
++	sd->quality = QUALITY_DEF;
++	sd->exposure = EXPOSURE_DEF;
++
++	return 0;
++}
++
++/* this function is called at probe and resume time */
++static int sd_init(struct gspca_dev *gspca_dev)
++{
++	struct sd *sd = (struct sd *) gspca_dev;
++
++	if (sd->sensor == SENSOR_MI0360)
++		reg_w(gspca_dev, SQ930_CTRL_RESET, 0x0000);
++
++	reg_r(gspca_dev, SQ930_CTRL_GET_DEV_INFO, 8);
++/* it returns:
++ * 03 00 12 93 0b f6 c9 00   from live! ultra
++ * 03 00 07 93 0b f6 ca 00   from live! ultra for notebook
++ * 02 00 07 93 0b f6 ca 00   from live! ultra for notebook
++ * 03 00 12 93 0b fe c8 00   from Trust WB-3500T, chip text 930c
++ * 02 00 12 93 0b fe c8 00   from Trust WB-3500T, chip text 930c
++ * 02 00 06 93 0b fe c8 00   from Joy-IT 318S, chip text 930c
++ * 02 00 12 93 0b fe cf 00   from ProQ Motion Webcam
++ * * byte
++ * 1. 02 usb 1.0 (12Mbit), 03 usb2.0 (480Mbit)
++ * 2. 00
++ * 3. 06 07 12 -- mode webcam? firmware??
++ * 4. 93	chip? 930b (930b or 930c)
++ * 5. 0b
++ * 6. f6 ???? fe ???? ccd/cmos???
++ * 7. c8, c9, ca cf -- mode webcam?, sensor? webcam?
++ * 8. 00
++ */
++	PDEBUG(D_PROBE, "info: %02x %02x %02x %02x %02x %02x %02x %02x",
++			gspca_dev->usb_buf[0],
++			gspca_dev->usb_buf[1],
++			gspca_dev->usb_buf[2],
++			gspca_dev->usb_buf[3],
++			gspca_dev->usb_buf[4],
++			gspca_dev->usb_buf[5],
++			gspca_dev->usb_buf[6],
++			gspca_dev->usb_buf[7]);
++
++	global_init(sd, 1);
++	return gspca_dev->usb_err;
++}
++
++/* Set up for getting frames. */
++static int sd_start(struct gspca_dev *gspca_dev)
++{
++	struct sd *sd = (struct sd *) gspca_dev;
++	int mode, qtable;
++
++	/* initialize the JPEG header */
++	jpeg_define(sd->jpeg_hdr, gspca_dev->height, gspca_dev->width,
++			0x21);		/* JPEG 422 */
++	jpeg_set_qual(sd->jpeg_hdr, sd->quality);
++
++	global_init(sd, 0);
++	msleep(100);
++
++	mode = gspca_dev->cam.cam_mode[gspca_dev->curr_mode].priv;
++	if (sd->quality > 92)
++		qtable = 0;
++	else if (sd->quality > 85)
++		qtable = 1;
++	else if (sd->quality > 78)
++		qtable = 2;
++	else
++		qtable = 3;
++	switch (sd->sensor) {
++	case SENSOR_MI0360:
++		ucbus_write(gspca_dev, mi0360_cap_start_0,
++				ARRAY_SIZE(mi0360_cap_start_0),
++				8);
++		i2c_write(gspca_dev,
++			mi0360_init_23, ARRAY_SIZE(mi0360_init_23));
++		i2c_write(gspca_dev,
++			mi0360_init_24, ARRAY_SIZE(mi0360_init_24));
++		i2c_write(gspca_dev,
++			mi0360_init_25, ARRAY_SIZE(mi0360_init_25));
++		ucbus_write(gspca_dev, mi0360_cap_start_1,
++				ARRAY_SIZE(mi0360_cap_start_1),
++				5);
++		i2c_write(gspca_dev,
++			mi0360_start_2, ARRAY_SIZE(mi0360_start_2));
++		i2c_write(gspca_dev,
++			mi0360_start_3, ARRAY_SIZE(mi0360_start_3));
++/* 1st start */
++		reg_wb(gspca_dev, (qtable << 12)
++					 | 0x0a00	/* 900 for Bayer */
++					 | SQ930_CTRL_CAP_START,
++				0x0500			/* a00 for Bayer */
++					 | lz24bp_capconfig[mode].cc_sizeid,
++				lz24bp_capconfig[mode].cc_bytes, 32);
++		reg_w(gspca_dev, SQ930_CTRL_CAP_STOP, 0x0000);
++		i2c_write(gspca_dev,
++			mi0360_start_4, ARRAY_SIZE(mi0360_start_4));
++		break;
++	default:
++/*	case SENSOR_LZ24BP: */
++		ucbus_write(gspca_dev, lz24bp_cap_start_0,
++				ARRAY_SIZE(lz24bp_cap_start_0),
++				8);
++		if (sd->type != Creative_live_motion)
++			ucbus_write(gspca_dev,
++					lz24bp_cap_start_1_gen,
++					ARRAY_SIZE(lz24bp_cap_start_1_gen),
++					5);
++		else
++			ucbus_write(gspca_dev,
++					lz24bp_cap_start_1_wclm,
++					ARRAY_SIZE(lz24bp_cap_start_1_wclm),
++					5);
++		ucbus_write(gspca_dev,
++					lz24bp_cap_start_2,
++					ARRAY_SIZE(lz24bp_cap_start_2),
++					6);
++		lz24bp_ppl(sd, mode == 2 ? 0x0564 : 0x0310);
++		msleep(10);
++		break;
++	}
++
++	/* start */
++	reg_wb(gspca_dev, (qtable << 12)
++				 | 0x0a00	/* 900 for Bayer */
++				 | SQ930_CTRL_CAP_START,
++			0x0500			/* a00 for Bayer */
++				 | lz24bp_capconfig[mode].cc_sizeid,
++			lz24bp_capconfig[mode].cc_bytes, 32);
++	msleep(1000);
++	if (sd->sensor == SENSOR_LZ24BP)
++		setexposure(gspca_dev);
++/*fixme: setexposure format for mi0360 is different...(reg = 011d)*/
++	return gspca_dev->usb_err;
++}
++
++static void sd_stopN(struct gspca_dev *gspca_dev)
++{
++	struct sd *sd = (struct sd *) gspca_dev;
++
++	reg_w(gspca_dev, SQ930_CTRL_CAP_STOP, 0);
++	sq930_led_set(sd, 0);
++}
++
++/* move a packet adding 0x00 after 0xff */
++static void add_packet(struct gspca_dev *gspca_dev,
++			u8 *data,
++			int len)
++{
++	int i;
++
++	i = 0;
++	do {
++		if (data[i] == 0xff) {
++			gspca_frame_add(gspca_dev, INTER_PACKET,
++					data, i + 1);
++			len -= i;
++			data += i;
++			*data = 0x00;
++			i = 0;
++		}
++	} while (++i < len);
++	gspca_frame_add(gspca_dev, INTER_PACKET, data, len);
++}
++
++static void sd_pkt_scan(struct gspca_dev *gspca_dev,
++			u8 *data,		/* isoc packet */
++			int len)		/* iso packet length */
++{
++	struct sd *sd = (struct sd *) gspca_dev;
++	u32 *p;
++	int l;
++	static const u8 ffd9[] = {0xff, 0xd9};
++
++	len -= 8;	/* ignore last 8 bytes */
++
++	/* the start of frame is indicated by 8 * 0xab and 2 unknown bytes
++	 * aligned on 4 bytes boundary */
++	p = (u32 *) data;
++	len /= 4;
++	while (--len > 0) {
++/*fixme: KO if the abab.. sequence crosses 2 packets */
++		if (*p == 0xabababab && p[1] == 0xabababab) {
++			l = (u8 *) p - data
++					- 16; /* ignore 16 trailing zeros */
++			add_packet(gspca_dev, data, l);
++			gspca_frame_add(gspca_dev, LAST_PACKET,
++					ffd9, 2);
++			gspca_frame_add(gspca_dev, FIRST_PACKET,
++						sd->jpeg_hdr, JPEG_HDR_SZ);
++			data = (u8 *) p + 10;
++			len--;
++			p++;
++		}
++		p++;
++	}
++	l = (u8 *) p - data + 4;
++	add_packet(gspca_dev, data, l);
++}
++
++static int sd_setexposure(struct gspca_dev *gspca_dev, __s32 val)
++{
++	struct sd *sd = (struct sd *) gspca_dev;
++
++	sd->exposure = val;
++	if (gspca_dev->streaming)
++		setexposure(gspca_dev);
++	return gspca_dev->usb_err;
++}
++
++static int sd_getexposure(struct gspca_dev *gspca_dev, __s32 *val)
++{
++	struct sd *sd = (struct sd *) gspca_dev;
++
++	*val = sd->exposure;
++	return 0;
++}
++
++static int sd_setfreq(struct gspca_dev *gspca_dev, __s32 val)
++{
++	struct sd *sd = (struct sd *) gspca_dev;
++
++	sd->freq = val;
++	if (gspca_dev->streaming)
++		setexposure(gspca_dev);
++	return gspca_dev->usb_err;
++}
++
++static int sd_getfreq(struct gspca_dev *gspca_dev, __s32 *val)
++{
++	struct sd *sd = (struct sd *) gspca_dev;
++
++	*val = sd->freq;
++	return 0;
++}
++
++static int sd_set_jcomp(struct gspca_dev *gspca_dev,
++			struct v4l2_jpegcompression *jcomp)
++{
++	struct sd *sd = (struct sd *) gspca_dev;
++
++	if (jcomp->quality < QUALITY_MIN)
++		sd->quality = QUALITY_MIN;
++	else if (jcomp->quality > QUALITY_MAX)
++		sd->quality = QUALITY_MAX;
++	else
++		sd->quality = jcomp->quality;
++	if (gspca_dev->streaming)
++		jpeg_set_qual(sd->jpeg_hdr, sd->quality);
++	return gspca_dev->usb_err;
++}
++
++static int sd_get_jcomp(struct gspca_dev *gspca_dev,
++			struct v4l2_jpegcompression *jcomp)
++{
++	struct sd *sd = (struct sd *) gspca_dev;
++
++	memset(jcomp, 0, sizeof *jcomp);
++	jcomp->quality = sd->quality;
++	jcomp->jpeg_markers = V4L2_JPEG_MARKER_DHT
++			| V4L2_JPEG_MARKER_DQT;
++	return 0;
++}
++
++static int sd_querymenu(struct gspca_dev *gspca_dev,
++			struct v4l2_querymenu *menu)
++{
++	switch (menu->id) {
++	case V4L2_CID_POWER_LINE_FREQUENCY:
++		switch (menu->index) {
++		case 0:		/* V4L2_CID_POWER_LINE_FREQUENCY_DISABLED */
++			strcpy((char *) menu->name, "NoFliker");
++			return 0;
++		case 1:		/* V4L2_CID_POWER_LINE_FREQUENCY_50HZ */
++			strcpy((char *) menu->name, "50 Hz");
++			return 0;
++		case 2:		/* V4L2_CID_POWER_LINE_FREQUENCY_60HZ */
++			strcpy((char *) menu->name, "60 Hz");
++			return 0;
++		}
++		break;
++	}
++	return -EINVAL;
++}
++
++/* sub-driver description */
++static const struct sd_desc sd_desc = {
++	.name   = MODULE_NAME,
++	.ctrls = sd_ctrls,
++	.nctrls = ARRAY_SIZE(sd_ctrls),
++	.config = sd_config,
++	.init   = sd_init,
++	.start  = sd_start,
++	.stopN  = sd_stopN,
++	.pkt_scan = sd_pkt_scan,
++	.get_jcomp = sd_get_jcomp,
++	.set_jcomp = sd_set_jcomp,
++	.querymenu = sd_querymenu,
++};
++
++/* Table of supported USB devices */
++#define ST(sensor, type) \
++	.driver_info = (SENSOR_ ## sensor << 8) \
++			| (type)
++static const __devinitdata struct usb_device_id device_table[] = {
++	{USB_DEVICE(0x041e, 0x4038), ST(MI0360, Creative_live_pro)},
++	{USB_DEVICE(0x041e, 0x403c), ST(LZ24BP, Creative_ultra_notebook)},
++	{USB_DEVICE(0x041e, 0x403d), ST(LZ24BP, Creative_ultra_notebook)},
++	{USB_DEVICE(0x041e, 0x4041), ST(LZ24BP, Creative_live_motion)},
++	{USB_DEVICE(0x2770, 0x930b), ST(MI0360, Sweex_motion_tracking)},
++	{USB_DEVICE(0x2770, 0x930c), ST(MI0360, Trust_3500t)},
++	{}
++};
++MODULE_DEVICE_TABLE(usb, device_table);
++
++
++/* -- device connect -- */
++static int sd_probe(struct usb_interface *intf,
++		const struct usb_device_id *id)
++{
++	return gspca_dev_probe(intf, id, &sd_desc, sizeof(struct sd),
++			THIS_MODULE);
++}
++
++static struct usb_driver sd_driver = {
++	.name       = MODULE_NAME,
++	.id_table   = device_table,
++	.probe      = sd_probe,
++	.disconnect = gspca_disconnect,
++#ifdef CONFIG_PM
++	.suspend = gspca_suspend,
++	.resume  = gspca_resume,
++#endif
++};
++
++/* -- module insert / remove -- */
++static int __init sd_mod_init(void)
++{
++	int ret;
++
++	ret = usb_register(&sd_driver);
++	if (ret < 0)
++		return ret;
++	info("registered");
++	return 0;
++}
++static void __exit sd_mod_exit(void)
++{
++	usb_deregister(&sd_driver);
++	info("deregistered");
++}
++
++module_init(sd_mod_init);
++module_exit(sd_mod_exit);
