@@ -134,3 +134,78 @@ true
 %files
 %defattr(-,root,root)
 %{_usrsrc}/%{dkmsname}-%{version}-%{release}
+
+
+%changelog
+* Sun Dec 05 2010 Oden Eriksson <oeriksson@mandriva.com> 0-0.hg14014.2mdv2011.0
++ Revision: 610255
+- rebuild
+
+  + Per Øyvind Karlsen <peroyvind@mandriva.org>
+    - add support for sq930x (P2)
+
+* Sat Jan 23 2010 Anssi Hannula <anssi@mandriva.org> 0-0.hg14014.1mdv2010.1
++ Revision: 495163
+- new snapshot
+- rediff disable-dvb-dummy-fe.patch
+- build for 2.6.32 on 2010.1+
+- add 2.6.31mnb support patch to make the new snapshot build on 2.6.31
+  with mandriva patches
+- use parallel build on multi-core systems as the build takes quite a
+  long time
+
+* Sat Aug 08 2009 Anssi Hannula <anssi@mandriva.org> 0-0.hg12407.1mdv2010.0
++ Revision: 411757
+- new snapshot
+- drop workaround-if-endif-bug.patch, now unneeded
+- fix dkms build failure on 2009.1
+
+* Sat Mar 14 2009 Anssi Hannula <anssi@mandriva.org> 0-0.hg10837.4mdv2009.1
++ Revision: 355165
+- replace previous hack by dropping incorrect Kconfig if/endif block
+  handling from make_kconfig.pl (workaround-if-endif-bug.patch)
+- disable DVB_DUMMY_FE (disable-dvb-dummy-fe.patch)
+
+* Sun Mar 08 2009 Anssi Hannula <anssi@mandriva.org> 0-0.hg10837.3mdv2009.1
++ Revision: 352866
+- workaround bug in make_kconfig.pl by re-enabling DVB_FE_CUSTOMISE for now
+
+* Sun Mar 08 2009 Anssi Hannula <anssi@mandriva.org> 0-0.hg10837.2mdv2009.1
++ Revision: 352813
+- actually disable v4l2-compat-ioctl32 on 32bit
+
+* Sat Mar 07 2009 Anssi Hannula <anssi@mandriva.org> 0-0.hg10837.1mdv2009.1
++ Revision: 351746
+- new snapshot
+
+* Sat Mar 07 2009 Anssi Hannula <anssi@mandriva.org> 0-0.hg10785.2mdv2009.1
++ Revision: 351598
+- disable noarch, 64bit has more modules (compat stuff), fixes dkms build
+  on 32bit
+
+* Tue Mar 03 2009 Anssi Hannula <anssi@mandriva.org> 0-0.hg10785.1mdv2009.1
++ Revision: 347864
+- new snapshot
+- build for 2.6.29 on cooker
+
+* Fri Dec 05 2008 Anssi Hannula <anssi@mandriva.org> 0-0.hg9767.1mdv2009.1
++ Revision: 310779
+- new snapshot
+- provide another stub script
+
+* Sat Nov 01 2008 Anssi Hannula <anssi@mandriva.org> 0-0.hg9500.1mdv2009.1
++ Revision: 299164
+- add executable bit to all stub scripts
+- new snapshot (fixes 2.6.27 support)
+- fix random file time race condition build errors by including more
+  stub scripts
+- remove wrong comment
+
+* Tue May 20 2008 Anssi Hannula <anssi@mandriva.org> 0-0.hg7901.1mdv2009.0
++ Revision: 209519
+- new snapshot
+
+* Sun May 04 2008 Anssi Hannula <anssi@mandriva.org> 0-0.hg7826.1mdv2009.0
++ Revision: 201126
+- initial Mandriva release
+

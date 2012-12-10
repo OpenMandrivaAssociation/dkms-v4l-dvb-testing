@@ -1,0 +1,52 @@
+diff -r e4429a1b736c linux/drivers/media/dvb/dvb-core/dvbdev.c
+--- a/linux/drivers/media/dvb/dvb-core/dvbdev.c	Wed Jan 20 03:54:00 2010 -0500
++++ b/linux/drivers/media/dvb/dvb-core/dvbdev.c	Sat Jan 23 04:11:13 2010 +0200
+@@ -473,11 +473,7 @@
+ #endif
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 31)
+-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
+-static char *dvb_nodename(struct device *dev)
+-#else
+ static char *dvb_devnode(struct device *dev, mode_t *mode)
+-#endif
+ {
+ 	struct dvb_device *dvbdev = dev_get_drvdata(dev);
+ 
+@@ -516,9 +512,7 @@
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)
+ 	dvb_class->dev_uevent = dvb_uevent;
+ #endif
+-#if LINUX_VERSION_CODE == KERNEL_VERSION(2, 6, 31)
+-	dvb_class->nodename = dvb_nodename;
+-#elif LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 31)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 31)
+ 	dvb_class->devnode = dvb_devnode;
+ #endif
+ 	return 0;
+diff -r e4429a1b736c linux/drivers/media/video/dabusb.c
+--- a/linux/drivers/media/video/dabusb.c	Wed Jan 20 03:54:00 2010 -0500
++++ b/linux/drivers/media/video/dabusb.c	Sat Jan 23 04:11:13 2010 +0200
+@@ -814,11 +814,7 @@
+ };
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 31)
+-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
+-static char *dabusb_nodename(struct device *dev)
+-#else
+ static char *dabusb_devnode(struct device *dev, mode_t *mode)
+-#endif
+ {
+ 	return kasprintf(GFP_KERNEL, "usb/%s", dev_name(dev));
+ }
+@@ -826,9 +822,7 @@
+ #endif
+ static struct usb_class_driver dabusb_class = {
+ 	.name =		"dabusb%d",
+-#if LINUX_VERSION_CODE == KERNEL_VERSION(2, 6, 31)
+-	.nodename =	dabusb_nodename,
+-#elif LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 31)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 31)
+ 	.devnode =	dabusb_devnode,
+ #endif
+ 	.fops =		&dabusb_fops,
