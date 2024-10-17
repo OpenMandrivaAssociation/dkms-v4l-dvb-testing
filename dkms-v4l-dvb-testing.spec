@@ -35,7 +35,7 @@ Version:	%{version}
 Release:	%{release}
 Group:		System/Kernel and hardware
 License:	GPLv2
-URL:		http://linuxtv.org/
+URL:		https://linuxtv.org/
 # rm -rf v4l-dvb; hg clone http://linuxtv.org/hg/v4l-dvb
 # cd v4l-dvb; hg archive -ttbz2 ../v4l-dvb-$(hg tip --template {rev}).tar.bz2; cd ..
 Source:		%oname-%snapshot.tar.bz2
